@@ -1,3 +1,12 @@
+/*TODO : Add a bomb item that can be collected every 10 or so coins.  Allows a space bar press to clear all enemies.
+        Add a coin-pickup animation.
+        Add a death animation?
+        Set a win condition?
+        Balance difficulty?
+        Figure out larger flow control to make a game over/restart screen.
+        !!!Refactor ALL THE THINGS to be dynamically generated based on canvas size rather than hardcoded. 
+        Allow canvas size to be changed to 600 + 400/500/600 (instead of the current 600(enemy spawn space) + 300 (3x3 play-area)) to allow larger playing grids...add other obstacles?  Change the inner shape of play fields?
+*/
 const KEYS = { LEFT: 37, RIGHT: 39, UP: 38, DOWN: 40, S: 83 }
 const COIN_POSITIONS = { 1: { x : 350, y: 350 }, 
 2: { x : 450, y: 350},
@@ -13,8 +22,6 @@ let currentSpeed = 5
 let enemySpeed = 5
 
 
-//Math.floor(Math.random() * 13)
-
 class Game {
     constructor() {
 
@@ -23,13 +30,16 @@ class Game {
         let gameSize = { x: canvas.width, y: canvas.height }
         this.bodies = []
         this.bodies = this.bodies.concat(new Player(this, gameSize))
-        this.tickCount = 0
+        this.tickCount = 58
         this.coin = new Coin(this)
         this.coinCount = 0;
+        this.isBegun = false
+        this.music = document.getElementById("music")
 
+        this.music.load()
 
         let tick = () => {
-            this.update()
+            this.update(gameSize, ctx)
             this.draw(ctx, gameSize)
             requestAnimationFrame(tick)
         }
@@ -37,38 +47,64 @@ class Game {
         tick()
     }
 
-    update () {
+    update (gameSize, ctx) {
+        let collidingWithAnything = (b1) => {
+            return this.bodies.filter(function (b2) { return colliding(b1, b2) }).length > 0
+        }
 
+        //checks for a collision.  If so, alerts player, resets game state
+        if (this.bodies.length > 1) {
+            let enemies = this.bodies.slice(1)
+            for (let enemy in enemies) {
+                if (collidingWithAnything(this.bodies[0], enemy)) {
+                    this.music.pause()
+                    this.music.load()
+                    alert("You have lost.  Click to play again.")
+                    this.bodies = []
+                    this.bodies = this.bodies.concat(new Player(this, gameSize))
+                    this.tickCount = 0
+                    this.coin = new Coin(this)
+                    this.coinCount = 0
+                    enemyFrequency = 60 
+                    this.isBegun = false
+                }
+            }
+        }
+        
         //determines whether player picks up a coin, increments coin count, adds a new coin
-        if (this.bodies[0].center.x === this.coin.center.x && this.bodies[0].center.y === this.coin.center.y) {
+        if (Math.abs(this.bodies[0].center.x - this.coin.center.x) < 5 && Math.abs(this.bodies[0].center.y - this.coin.center.y) < 5) {
             this.coinCount += 1
             this.coin = new Coin(this)
         }
         
-
-        //add to this once coinCount increments
+        //increases difficulty as score increases...needs balancing
         if (this.coinCount === 0) {
-            this.tickCount = 0
+            this.tickCount = 58 //This is a fun number to set to 59!!!
+        } else if (this.coinCount === 1) {
+            this.isBegun = true
+            this.music.play()
         } else if (this.coinCount === 10) {
             enemyFrequency = 50
         } else if (this.coinCount === 20) {
             enemyFrequency = 40
         } else if (this.coinCount === 30) {
-            enemyFrequency = 30
+            enemyFrequency = 35
         } else if (this.coinCount === 40) {
-            enemyFrequency = 20
+            enemyFrequency = 30
         } else if (this.coinCount === 50) {
-            enemyFrequency = 10
+            enemyFrequency = 25
+        } else if (this.coinCount === 60) {
+            enemyFrequency = 20
+        } else if (this.coinCount === 70) {
+            enemyFrequency = 15
         }
         
 
         //decides whether to spawn an enemy...frequence increases as coin count increases.
         this.tickCount = (this.tickCount + 1) % enemyFrequency;
         if (this.tickCount === 0) {
-            console.log("Made enemy")
             this.bodies = this.bodies.concat(new Enemy(this))
         }
-
 
         let isOnscreen = (body) => {
             return body.center.x >= -20 && body.center.x <= 920 && body.center.y >= -20 && body.center.y <= 920
@@ -77,30 +113,32 @@ class Game {
         //Throw away bodies that go offscreen...no need for them to ride off into the sunset
         this.bodies = this.bodies.filter(isOnscreen)
 
-
-    
         // Call update on every body.  Keep this?  USE INSTANCEOF to check type and render appropriately
         for (let i = 0; i < this.bodies.length; i++) {
           this.bodies[i].update()
         }
     }
     
-      // **draw()** draws the game.
-    draw (ctx, gameSize) {
+    draw(ctx, gameSize) {
 
         ctx.clearRect(0, 0, gameSize.x, gameSize.y)
-
-
-
+  
         //draws background
-        ctx.fillStyle = "pink"
+        ctx.fillStyle = "rgb(152, 173, 155)"
         ctx.fillRect(0,0,gameSize.x, gameSize.y)
-        ctx.fillStyle = "green"
+        ctx.fillStyle = "rgb(80, 146, 100)"
         ctx.fillRect(300, 300, 300, 300)
         ctx.fillStyle = "black"
 
         drawCoin(ctx, this.coin)
 
+        drawScore(ctx, this.coinCount)
+
+        if (!this.isBegun) {
+            drawWelcome(ctx) 
+        }
+
+        
 
         // Draw each body as a rectangle.
         for (let i = 0; i < this.bodies.length; i++) {
@@ -118,12 +156,13 @@ class Player {
         this.game = game
         this.size = { x: 40, y: 40 }
         this.center = { x: gameSize.x / 2, y: gameSize.y / 2 }
+        this.color = "purple"
     
         // Create a keyboard object to track button presses.
         this.keyboarder = new Keyboarder()         
     }
 
-    update () {
+    update() {
 
         if (this.animationFramesLeft !== 0) {
             if (this.animationDirection === KEYS.LEFT) {
@@ -140,7 +179,6 @@ class Player {
                 this.animationFramesLeft -= 1
             } 
         } else {
-            //350 and 550
             if (this.keyboarder.isDown(KEYS.LEFT) && this.center.x > 350) {
                 this.animationFramesLeft = ANIMATION_FRAMES
                 this.animationDirection = KEYS.LEFT
@@ -159,7 +197,7 @@ class Player {
 }
 
 class Enemy {
-    constructor (game) {
+    constructor(game) {
         this.game = game
         this.POSITIONS = { 1: { x: -20, y: 350 }, 
                            2: { x : -20, y: 450},
@@ -176,7 +214,7 @@ class Enemy {
         this.size = { x: 20, y: 20 }
         this.random = Math.floor(Math.random() * 12) + 1
         this.center = this.POSITIONS[this.random]
-        
+        this.color = "black"
     }
 
     update() {
@@ -195,30 +233,12 @@ class Enemy {
 class Coin {
     constructor (game) {
         this.game = game;
-        /*this.POSITIONS = this.POSITIONS = { 1: { x : 350, y: 350 }, 
-                                            2: { x : 450, y: 350},
-                                            3: { x : 550, y: 350},
-                                            4: { x : 350, y: 450},
-                                            5: { x : 450, y: 450},
-                                            6: { x : 550, y: 450},
-                                            7: { x : 350, y: 550},
-                                            8: { x : 450, y: 550},
-                                            9: { x : 550, y: 550}}*/
-        this.center = getCenter(this.game)
+        this.center = getCoinCenter(this.game)
     }
 }
 
-/*
-window.addEventListener('load', function () {
-    new Game()
-  })*/
-
-
-
-
-
 class Keyboarder {
-  constructor () { 
+  constructor() { 
     let keyState = {}
     
     window.addEventListener('keydown', function (event) {
@@ -234,16 +254,14 @@ class Keyboarder {
       this.isDown = function (keyCode) {
         return keyState[keyCode] === true
       }
-
-
     }
-
 }
 
-// **drawRect()** draws passed body as a rectangle to `ctx`, the drawing context.
 function drawRect (ctx, body) {
+    ctx.fillStyle = body.color
     ctx.fillRect(body.center.x - body.size.x / 2, body.center.y - body.size.y / 2,
       body.size.x, body.size.y)
+    ctx.fillStyle = "black"
   }
 
 function drawCoin (ctx, body) {
@@ -263,11 +281,42 @@ function drawCoin (ctx, body) {
     ctx.strokeText("$", body.center.x - 10, body.center.y + 12)
 }
   
-function getCenter(body) {
+function getCoinCenter(body) {
     let r = Math.floor(Math.random() * 8) + 1
     while (COIN_POSITIONS[r].x === body.x && COIN_POSITIONS[r].y === body.y) {
         r = Math.floor(Math.random() * 8) + 1
     }
     return COIN_POSITIONS[r]
 }
+
+function colliding(b1, b2) {
+    return !(
+      b1 === b2 ||
+            //player right < enemy left
+          b1.center.x + b1.size.x / 2 < b2.center.x - b2.size.x / 2 ||
+            //player bottom < enemy top
+          b1.center.y + b1.size.y / 2 < b2.center.y - b2.size.y / 2 ||
+            //player left  > enemy right
+          b1.center.x - b1.size.x / 2 > b2.center.x + b2.size.x / 2 ||
+            //player top > enemy bottom
+          b1.center.y - b1.size.y / 2 > b2.center.y + b2.size.y / 2
+    )
+  }
   
+  function drawScore(ctx, score) {
+    ctx.fillStyle = "black"
+    ctx.font = "75px sans-serif"
+    ctx.strokeText("Score: " + score, 50, 850)
+  }
+
+  function drawWelcome(ctx) {
+        ctx.fillStyle = "black"
+        ctx.font = "75px sans-serif"
+        ctx.strokeText("Grab the coin to begin!", 50, 750)
+  }
+
+
+
+window.addEventListener('load', function () {
+    new Game()
+})
